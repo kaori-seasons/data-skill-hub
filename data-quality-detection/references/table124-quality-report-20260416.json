@@ -1,0 +1,2218 @@
+{
+  "generated_at": "2026-04-16 16:26:53",
+  "workbook_path": "/Users/windwheel/.copaw/workspaces/短视频数据汇总表_20260121_V2.xlsx",
+  "four_table_pdf_path": "/Users/windwheel/.copaw/workspaces/four-table.pdf",
+  "four_table_expected_dims": [
+    "file_id",
+    "platform_source_id",
+    "sku",
+    "spu",
+    "weight_factor"
+  ],
+  "four_table_pdf_excerpt": "第四张表：数字资产全链路归因桥接表 表名： dwt_content_product_attribution_map 核⼼设计思想： \"以 SKU 为灵魂，以权重为分配 \" 1. 表 Schema（字段设计） 字段名 物理名 类型 说明 解决的隐患 / 关联主键mappi ng_idStringMD5(file_id + platform_source_id + sku)确保每⼀条记录是 \" ⽂件 - 平台发布实例 - ⽂件 IDfile_ idString关联表 01 指向物理原始素材（⽤于计算制作时长 平台素材 IDplatf orm_s ource _idString关联表 03 指向平台发布的具体实例（⽤于挂载点 商品 SKU sku String核⼼维度键彻底解决配⾊冲突。保留颜⾊码（如 - ⿊），⽀持钻取 商品 SPU spu String维度键 ⽤于向上聚合，进⾏全款级的 ROI 分析 归因权重weigh t_fac torDecimal默认 1.0关键设计：应对 \"穿搭合集 \" 。若⼀段视 33，避免 GMV 在统计时被重复计算 主次标识is_ma in_pr oductBoolean是 / 否 标记该配⾊是视频的 \" 绝对主⾓ \" 还是 \" 凑 制作⽅式creat ion_m ethodEnum AI 辅助 / ⼈⼯剪辑 来源于表 01 。⽀持对⽐ AI 产出与⼈⼯ 发布关联状态match _typeString强绑定 / 正则匹配 / ⼿动补录 监控数据质量。解决正则提取 SPU 导致 2. 核⼼逻辑与改进依据 依据⼀：打破 SPU 的 \" 平均主义 \" ，保",
+  "summary_findings": [
+    "表1 file_id 非唯一，重复扩张 52298 行，说明资源层还不是稳定的一条文件一行。",
+    "表1 图片子集中仍有 8477 行视频后缀路径，会直接污染表4和图片消费层。",
+    "four_table.pdf 将 sku 定义为桥接核心维度键；当前实表缺失时，配色级归因无法落地。",
+    "four_table.pdf 将 weight_factor 定义为归因权重；当前实表缺失时，多商品内容无法防止双重计量。",
+    "表4 platform_source_id 为空 6480876 行，占比 100.00%，桥接表尚未稳定承接平台发布实例。",
+    "表4 file_id 为空 519 行，占比 0.01%，桥接层无法稳定回溯本地资产。"
+  ],
+  "table_reports": [
+    {
+      "table_id": "01",
+      "plan_name": "01、【文件id】资源表",
+      "target_table": "data_dwd.dwd_t_file_resource_id",
+      "logic_desc": "此表最细粒度到sku，一共依赖三张表：\n\n1：ods_t_file_information，此表都是视频信息，取is_delete <> true的数据，并且以发布时间是否为空，来判断已发/未发。\n\n\n\n2：ods_pic_for_up_new_backup，此表都是图片信息，取is_delete = false的数据，以content_type是否包含“白底图”来判断是否白底，以image_name是否包含“主图”来判断是否主图。\n\n\n\n3：ods_t_image_file_information，此表都是图片信息，以file_type是否包含“穿搭图”来判断是否穿搭。",
+      "code_excerpt": "insert overwrite table data_dwd.dwd_t_file_resource_id \n\n\n\n-- 视频\n\nselect file_id,     --id\n\n       '视频' as file_type,   --文件类型\n\n       platform,   --平台\n\n       store,      --店铺\n\n       live_room,  --直播间\n\n       left(store, 2 ) as brand,--品牌\n\n       spu, \n\n       sku,\n\n       create_time , --创作日期\n\n       publish_date ,  --发布日期\n\n       case when publish_date is not null or publish_date <> '' then '已发' else '未发' end as publish_or_not, --是否已发\n\n       video_duration_type, --视频时长类型\n\n       width, height, --视频宽高\n\n       file_size, --文件大小\n\n       null as wear_or_not, --是否穿搭\n\n       null as white_or_not, --是否白底图\n\n       null as main_or_not, --是否主图\n\n       null as picture_type\n\nfrom data_ods.ods_t_file_information  --（此表仅视频，抖音有店铺和品牌信息，天猫无店铺和品牌信息）\n\nwhere is_delete <> 'true'\n\n\n\nunion all \n\n--图片                                                        \n\nSELECT                    id                                        file_id                 -- 文件ID\n\n                       ,'图片'                                       file_type   --文件类型\n\n                       , null                                         platform  --平台\n\n                       , null                                         store  --店铺\n\n                       , null                                         live_room  --直播间\n\n                       , MAX_BY(brand, image_modify_time)             brand            --品牌\n\n                       , MAX_BY(spu, image_modify_time)               spu                     -- SPU\n\n                       , MAX_BY(sku, image_modify_time)               sku                     -- SKU\n\n                       , MAX_BY(image_create_time, image_modify_time) create_time       -- 图片创建时间\n\n                       , null                                         publish_time       --图片发布时间\n\n         ",
+      "source_tables": [
+        "ods_t_file_information",
+        "ods_pic_for_up_new_backup",
+        "ods_t_image_file_information"
+      ],
+      "downstream_notes": [
+        "下游供表2做 file_id / spu 语义补齐，下游供表4做桥接汇总。"
+      ],
+      "schema_columns": [
+        "brand",
+        "concatenated_path",
+        "create_time",
+        "file_id",
+        "file_name",
+        "file_type",
+        "full_path",
+        "height",
+        "picture_size",
+        "picture_type",
+        "picture_wear",
+        "platform",
+        "publish_date",
+        "resolution",
+        "spu",
+        "video_duration_type",
+        "video_wide_range",
+        "width"
+      ],
+      "row_count": 6480876,
+      "distinct_key_count": 6428578,
+      "key_definition": "file_id",
+      "freshness": [
+        [
+          "create_time",
+          "2012-07-02 09:52:14",
+          "2026-04-14 19:04:18"
+        ],
+        [
+          "publish_date",
+          "2023-02-02",
+          "5419-10-10"
+        ]
+      ],
+      "source_snapshots": [
+        {
+          "full_name": "data_ods.ods_t_file_information",
+          "exists": true,
+          "record_count_hint": 89436,
+          "column_count": 30,
+          "key_columns_present": [
+            "file_id",
+            "spu",
+            "publish_date"
+          ]
+        },
+        {
+          "full_name": "data_ods.ods_pic_for_up_new_backup",
+          "exists": true,
+          "record_count_hint": 11620135,
+          "column_count": 22,
+          "key_columns_present": [
+            "file_id",
+            "spu"
+          ]
+        },
+        {
+          "full_name": "data_ods.ods_t_image_file_information",
+          "exists": true,
+          "record_count_hint": 644,
+          "column_count": 22,
+          "key_columns_present": [
+            "file_id",
+            "spu"
+          ]
+        }
+      ],
+      "field_metrics": [
+        {
+          "field_name": "file_type",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [
+            [
+              "图片",
+              "6402925"
+            ],
+            [
+              "视频",
+              "77951"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "file_id",
+          "present_in_schema": true,
+          "fill_count": 6480357,
+          "miss_count": 519,
+          "miss_rate_pct": 0.008,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "platform",
+          "present_in_schema": true,
+          "fill_count": 5989660,
+          "miss_count": 491216,
+          "miss_rate_pct": 7.5795,
+          "distribution": [
+            [
+              "天猫",
+              "3906757"
+            ],
+            [
+              "唯品会",
+              "1362812"
+            ],
+            [
+              "抖音",
+              "401548"
+            ],
+            [
+              "拼多多",
+              "123524"
+            ],
+            [
+              "快手",
+              "121122"
+            ],
+            [
+              "小红书",
+              "58793"
+            ],
+            [
+              "得物",
+              "14256"
+            ],
+            [
+              "微信视频号",
+              "848"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "brand",
+          "present_in_schema": true,
+          "fill_count": 6475451,
+          "miss_count": 5425,
+          "miss_rate_pct": 0.0837,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "spu",
+          "present_in_schema": true,
+          "fill_count": 6470469,
+          "miss_count": 10407,
+          "miss_rate_pct": 0.1606,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "create_time",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "full_path",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "concatenated_path",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "video_duration_type",
+          "present_in_schema": true,
+          "fill_count": 77951,
+          "miss_count": 6402925,
+          "miss_rate_pct": 98.7972,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "video_wide_range",
+          "present_in_schema": true,
+          "fill_count": 77951,
+          "miss_count": 6402925,
+          "miss_rate_pct": 98.7972,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "picture_size",
+          "present_in_schema": true,
+          "fill_count": 6402925,
+          "miss_count": 77951,
+          "miss_rate_pct": 1.2028,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "picture_wear",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "picture_type",
+          "present_in_schema": true,
+          "fill_count": 6402925,
+          "miss_count": 77951,
+          "miss_rate_pct": 1.2028,
+          "distribution": [
+            [
+              "白底图",
+              "1897757"
+            ],
+            [
+              "其他",
+              "1803429"
+            ],
+            [
+              "内页",
+              "1321451"
+            ],
+            [
+              "主图",
+              "507802"
+            ],
+            [
+              "灰底图",
+              "427750"
+            ],
+            [
+              "素材图",
+              "167477"
+            ],
+            [
+              "规格图",
+              "145412"
+            ],
+            [
+              "尺码图",
+              "47823"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "publish_date",
+          "present_in_schema": true,
+          "fill_count": 6473385,
+          "miss_count": 7491,
+          "miss_rate_pct": 0.1156,
+          "distribution": [],
+          "note": ""
+        }
+      ],
+      "checks": [
+        {
+          "check_name": "file_id 唯一性",
+          "severity": "high",
+          "status": "fail",
+          "detail": "总行数 6480876，distinct file_id 6428578，重复扩张 52298 行。",
+          "row_count": 52298,
+          "row_rate_pct": 0.807
+        },
+        {
+          "check_name": "图片链路混入视频后缀",
+          "severity": "high",
+          "status": "fail",
+          "detail": "表1同时承接图片与视频资源，若图片行路径带视频后缀，会直接污染下游桥接表与图片消费层。",
+          "row_count": 8477,
+          "row_rate_pct": 0.1308
+        }
+      ],
+      "samples": [
+        {
+          "title": "重复 file_id 样本",
+          "description": "抽样展示表1中同一 file_id 被展开成多行的记录。",
+          "columns": [
+            "file_id",
+            "file_type",
+            "platform",
+            "spu",
+            "create_time",
+            "publish_date",
+            "full_path",
+            "dup_cnt"
+          ],
+          "rows": [
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "310231L",
+              "2024-08-07 17:39:23.267",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.7310231L详情图微信图片_20240618155651.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "406415L",
+              "2024-08-07 17:39:46.563",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.7406415L详情图微信图片_20240618155651.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "303707L",
+              "2024-08-15 11:33:46.667",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.15303707L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "303755L",
+              "2024-08-15 11:33:53.983",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.15303755L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "303944L",
+              "2024-08-15 11:34:00.02",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.15303944L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "403829L",
+              "2024-08-15 11:34:14.463",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.15403829L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "403845L",
+              "2024-08-15 11:34:19.92",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.15403845L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "303499L",
+              "2024-08-16 14:35:57.6",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.16303499L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "405291L",
+              "2024-08-16 14:36:03.747",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.16405291L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "L424K061",
+              "2024-08-16 14:36:22.26",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.16L424K061详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "L424K062",
+              "2024-08-16 14:36:30.73",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.16L424K062详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "P324B075",
+              "2024-08-16 14:36:34.247",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.16P324B075详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "302677L",
+              "2024-08-23 10:10:27.987",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.23302677L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "405636L",
+              "2024-08-23 10:10:29.85",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.23405636L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "403962L",
+              "2024-08-26 18:10:45.51",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.26403962L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "405042L",
+              "2024-08-26 18:10:50.35",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.26405042L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "303560L",
+              "2024-08-27 19:16:12.967",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图8.27303560L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "403908L",
+              "2024-08-27 19:16:16.223",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图8.27403908L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "L424K017",
+              "2024-08-28 18:10:01.627",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.28L424K017详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "L424K020",
+              "2024-08-28 18:10:20.243",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.28L424K020详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "P424K054",
+              "2024-08-28 18:10:23.677",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.28P424K054详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "P424K068",
+              "2024-08-28 18:10:31.993",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.28P424K068详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "405293L",
+              "2024-08-29 16:50:57.643",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.29405293L详情图详情-053.png",
+              "248"
+            ],
+            [
+              "4c24efdd132726a46a570636d86cd694",
+              "图片",
+              "抖音",
+              "406393L",
+              "2024-08-29 16:51:02.087",
+              "2025-05-29",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图-8.29406393L详情图详情-053.png",
+              "248"
+            ]
+          ]
+        },
+        {
+          "title": "图片行视频后缀样本",
+          "description": "抽样展示 file_type='图片' 但 full_path 呈现视频后缀的记录。",
+          "columns": [
+            "file_id",
+            "file_type",
+            "platform",
+            "picture_type",
+            "picture_wear",
+            "full_path",
+            "create_time"
+          ],
+          "rows": [
+            [
+              "21cf6e3006234110224e8871be7d7869",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.14180362180362-SAND.mp4",
+              "2025-11-14 14:47:41.327"
+            ],
+            [
+              "81da54aa1b3a08da70d5a122fcb35828",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.11246215246215-WMLT.mp4",
+              "2025-11-11 11:50:09.777"
+            ],
+            [
+              "80053c0e5cc05a1a463d6f42f9f1768c",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.11216785216785-BRN.mp4",
+              "2025-11-11 11:50:04.633"
+            ],
+            [
+              "0d638699356dbdd87394e7aa4d143ac1",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7P425W188P425W188.mp4",
+              "2025-11-07 18:07:29.73"
+            ],
+            [
+              "39fd0fc116fdd4c5d54f81fc76ec2726",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7P425W093P425w093-衣服.mp4",
+              "2025-11-07 18:07:27.013"
+            ],
+            [
+              "08f8e74f89b72d8f05f086630b4d8f9d",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7P425W086P425W086.mp4",
+              "2025-11-07 18:07:26.29"
+            ],
+            [
+              "f2231c68c5ada8cf680902882a08187a",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7P425M141P425M141.mp4",
+              "2025-11-07 18:07:23.267"
+            ],
+            [
+              "e4ce71df81037c3a30b693ebbb947979",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7L425W039L425w039-衣服.mp4",
+              "2025-11-07 18:07:21.41"
+            ],
+            [
+              "b968f58695617afa2be4853b24f0edf7",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7L425M002L425M002.mp4",
+              "2025-11-07 18:07:20.197"
+            ],
+            [
+              "5d0380a90708526c8362c57e9ba07259",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇成人上新图25年11.7L424M137L424M137.mp4",
+              "2025-11-07 18:07:18.573"
+            ],
+            [
+              "2b25bd741c3dbdef5b7c4191e3058b33",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图25年11.5L126K051L126K051-0018.mp4",
+              "2025-11-05 11:02:56.037"
+            ],
+            [
+              "f774b5c8b3a90368fe67aab7cde641a9",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "\\\\h3c.skomart.net\\media\\商品图片存储\\ZJB\\抖音主图完成-NK\\斯凯奇儿童上新图25年11.5\\L126K050\\L126K050-0018,L126K050-0074,L126K050-001w.mp4",
+              "2025-11-05 11:02:55.043"
+            ],
+            [
+              "fab93bdae1887242fdb9a042a4d1474b",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图25年11.5L126K020L126K020-001W.mp4",
+              "2025-11-05 11:02:54.103"
+            ],
+            [
+              "af0fa9b303cbb81608ec19895666f39f",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇儿童上新图25年11.5L126K012L126K012-06DX.mp4",
+              "2025-11-05 11:02:53.153"
+            ],
+            [
+              "3fa04d7050e76d0953c7ee69fd436772",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "\\\\h3c.skomart.net\\media\\商品图片存储\\ZJB\\抖音主图完成-NK\\斯凯奇儿童上新图25年11.5\\L126K003\\L126K003-001W,L126K003-0018.mp4",
+              "2025-11-05 11:02:49.473"
+            ],
+            [
+              "6bd3237b7fb9c5b19d4a65f36c3b99d5",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇上新图25年10.31P425W121P425W121.mp4",
+              "2025-10-31 17:53:29.377"
+            ],
+            [
+              "e8d82216109ae234e83a909002764b8d",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇上新图25年10.31P425M193P425M193.mp4",
+              "2025-10-31 17:53:28.31"
+            ],
+            [
+              "33355bbac807955d8a402440b6d0ee3b",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇上新图25年10.31P425M137P425M137.mp4",
+              "2025-10-31 17:53:27.573"
+            ],
+            [
+              "7e14fa1d85af29f4a4a633e9a6b7ea71",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇上新图25年10.31P425M132P425M132.mp4",
+              "2025-10-31 17:53:26.787"
+            ],
+            [
+              "89487965fdcfe19d8dd89e4596afb84b",
+              "图片",
+              "抖音",
+              "其他",
+              "其他",
+              "h3c.skomart.netmedia商品图片存储ZJB抖音主图完成-NK斯凯奇上新图25年10.31P425M041P425M041.mp4",
+              "2025-10-31 17:53:24.637"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "02",
+      "plan_name": "02、【SPU、文件id】标签表",
+      "target_table": "data_dwd.dwd_file_label_id_spu",
+      "logic_desc": "此表最细粒度到spu，一共依赖四张表：\n\n1：01表：dwd_t_file_resource_id，从此表中取文件ID，SPU等基础信息；\n\n\n\n2：tb16_dim_product_sale_dimension，通过商品id关联表：ods_dy_product_top_crowd_ays，从此表中，取出每个spu对应的商品信息，以及性别信息。性别细分为点击、曝光、购买人群性别分布；\n\n\n\n3：ods_rpa_material_data，从此表中，取出每一个SPU对应的场景和风格，并通过MAX()函数获取唯一值",
+      "code_excerpt": "insert overwrite table data_dwd.dwd_file_label_id_spu \n\n\n\n\n\n--tb16信息\n\nwith t2 as (\n\n     \t\t\t\t\t\t\t\tSELECT 商品链接id as product_id\n\n     \t\t\t\t\t\t\t\t  , spu\n\n                                     , MAX(品牌大类)          AS  brand_big_cate                  --品牌大类\n\n                                     , MAX(抖音成人商品_中类规整)     mid_cate           --抖音成人商品_中类规整\n\n                                     , MAX(抖音成人商品_细分赛道)     sub_track          --抖音成人商品_细分赛道                                     \n\n                                     , MAX(产品名称)              product_name                --产品名称\n\n\n\n                                     , MAX(性别_李宁bi)           gender_lining_bi           --性别_李宁bi\n\n                                     \n\n                                     , MAX(风格)                  style                       --风格\n\n                                     , MAX(适用场景)              scene                       -- 适用场景\n\n                                     \n\n                                FROM data_dim.tb16_dim_product_sale_dimension\n\n                                where 产品名称 is not null\n\n                                GROUP BY 1,2\n\n)\n\n--人群性别\n\n, t3 as (      SELECT \n\n                       product_id ,\n\n                       -- crowd, date_type, horizontal,\n\n                       max(case when crowd = 'click_crowd' and date_type = '近7天' then horizontal else null end) as gender_click_seven_days,\n\n                       max(case when crowd = 'click_crowd' and date_type = '自然月' then horizontal else null end) as gender_click_month,\n\n                       max(case when crowd = 'exposure_crowd' and date_type = '近7天' then horizontal else null end) as gender_exposure_seven_days,\n\n                       max(case when crowd = 'exposure_crowd' and date_type = '自然月' then horizontal else null end) a",
+      "source_tables": [
+        "ods_t_file_information",
+        "ods_pic_for_up_new_backup",
+        "ods_t_image_file_information",
+        "ods_rpa_douyin_compass_video",
+        "tb16_dim_product_sale_dimension",
+        "ods_dy_product_top_crowd_ays",
+        "ods_rpa_material_data"
+      ],
+      "downstream_notes": [
+        "下游供表4做 file_id / spu 维度桥接。"
+      ],
+      "schema_columns": [
+        "big_cate",
+        "file_id",
+        "file_type",
+        "gender",
+        "mid_cate",
+        "product_name",
+        "scene",
+        "spu",
+        "style",
+        "sub_track"
+      ],
+      "row_count": 6480876,
+      "distinct_key_count": 6480876,
+      "key_definition": "(file_id, spu)",
+      "freshness": [
+        [
+          "upstream_create_time_proxy",
+          "2012-07-02 09:52:14",
+          "2026-04-14 18:12:25"
+        ]
+      ],
+      "source_snapshots": [
+        {
+          "full_name": "data_dwd.dwd_t_file_resource_id",
+          "exists": true,
+          "record_count_hint": 6480876,
+          "column_count": 18,
+          "key_columns_present": [
+            "file_id",
+            "spu"
+          ]
+        },
+        {
+          "full_name": "data_dim.tb16_dim_product_sale_dimension",
+          "exists": true,
+          "record_count_hint": 791803,
+          "column_count": 123,
+          "key_columns_present": [
+            "spu",
+            "商品链接id"
+          ]
+        },
+        {
+          "full_name": "data_ods.ods_dy_product_top_crowd_ays",
+          "exists": true,
+          "record_count_hint": 3558817,
+          "column_count": 12,
+          "key_columns_present": []
+        },
+        {
+          "full_name": "data_ods.ods_rpa_material_data",
+          "exists": true,
+          "record_count_hint": 102,
+          "column_count": 6,
+          "key_columns_present": []
+        }
+      ],
+      "field_metrics": [
+        {
+          "field_name": "file_id",
+          "present_in_schema": true,
+          "fill_count": 6480357,
+          "miss_count": 519,
+          "miss_rate_pct": 0.008,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "spu",
+          "present_in_schema": true,
+          "fill_count": 6470469,
+          "miss_count": 10407,
+          "miss_rate_pct": 0.1606,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "product_name",
+          "present_in_schema": true,
+          "fill_count": 1612647,
+          "miss_count": 4868229,
+          "miss_rate_pct": 75.1168,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "big_cate",
+          "present_in_schema": true,
+          "fill_count": 6191828,
+          "miss_count": 289048,
+          "miss_rate_pct": 4.46,
+          "distribution": [
+            [
+              "服装",
+              "3506001"
+            ],
+            [
+              "鞋",
+              "1982145"
+            ],
+            [
+              "配件",
+              "584209"
+            ],
+            [
+              "器材",
+              "76055"
+            ],
+            [
+              "服饰",
+              "41285"
+            ],
+            [
+              "鞋类",
+              "1174"
+            ],
+            [
+              "推广品",
+              "955"
+            ],
+            [
+              "赠品",
+              "4"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "mid_cate",
+          "present_in_schema": true,
+          "fill_count": 6143171,
+          "miss_count": 337705,
+          "miss_rate_pct": 5.2108,
+          "distribution": [
+            [
+              "T恤类",
+              "794262"
+            ],
+            [
+              "卫衣类",
+              "632763"
+            ],
+            [
+              "运动生活鞋类",
+              "492100"
+            ],
+            [
+              "童鞋类",
+              "476035"
+            ],
+            [
+              "卫裤类",
+              "434650"
+            ],
+            [
+              "跑步鞋类",
+              "411795"
+            ],
+            [
+              "外套",
+              "366487"
+            ],
+            [
+              "运动裤类",
+              "283966"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "sub_track",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [
+            [
+              "其他",
+              "4255098"
+            ],
+            [
+              "短袖T恤",
+              "249953"
+            ],
+            [
+              "夹克外套",
+              "202717"
+            ],
+            [
+              "运动长裤",
+              "197690"
+            ],
+            [
+              "卫衣",
+              "136610"
+            ],
+            [
+              "篮球鞋",
+              "133403"
+            ],
+            [
+              "包",
+              "122946"
+            ],
+            [
+              "其他服装",
+              "115500"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "gender",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [
+            [
+              "男性",
+              "2500096"
+            ],
+            [
+              "女性",
+              "1219355"
+            ],
+            [
+              "中性",
+              "1081642"
+            ],
+            [
+              "无",
+              "919972"
+            ],
+            [
+              "童",
+              "759811"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "scene",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [
+            [
+              "其它",
+              "6253803"
+            ],
+            [
+              "慢跑",
+              "111148"
+            ],
+            [
+              "竞训",
+              "64829"
+            ],
+            [
+              "健步",
+              "37277"
+            ],
+            [
+              "越野跑",
+              "8567"
+            ],
+            [
+              "专业马拉松",
+              "4814"
+            ],
+            [
+              "火锅羽绒｜故宫毛衣｜菲林轻舞｜甜酷",
+              "438"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "style",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [
+            [
+              "其它",
+              "4338239"
+            ],
+            [
+              "运动",
+              "1085530"
+            ],
+            [
+              "时尚",
+              "768362"
+            ],
+            [
+              "休闲",
+              "211180"
+            ],
+            [
+              "户外",
+              "74873"
+            ],
+            [
+              "酷飒街头风",
+              "822"
+            ],
+            [
+              "清纯初恋风",
+              "694"
+            ],
+            [
+              "甜酷学院风",
+              "438"
+            ]
+          ],
+          "note": ""
+        }
+      ],
+      "checks": [
+        {
+          "check_name": "(file_id, spu) 唯一性",
+          "severity": "low",
+          "status": "pass",
+          "detail": "总行数 6480876，distinct(file_id,spu) 6480876。",
+          "row_count": 0,
+          "row_rate_pct": 0.0
+        },
+        {
+          "check_name": "file_id 上游回链表1",
+          "severity": "low",
+          "status": "pass",
+          "detail": "表2按规划应建立在表1 file_id 基础上补充商品语义；若回链失败，标签层粒度不可信。",
+          "row_count": 0,
+          "row_rate_pct": 0.0
+        }
+      ],
+      "samples": [
+        {
+          "title": "语义字段缺失样本",
+          "description": "抽样展示表2中商品语义字段缺失最重的记录。",
+          "columns": [
+            "file_id",
+            "spu",
+            "product_name",
+            "big_cate",
+            "mid_cate",
+            "sub_track",
+            "gender",
+            "scene",
+            "style",
+            "missing_semantic_cnt"
+          ],
+          "rows": [
+            [
+              "",
+              "ABSW223",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWA51",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWA55",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWB72",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWB74",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWC09",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWD83",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWJ01",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWJ03",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWJ05",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWK91",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AFDWK94",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AHSW129",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AHSW636",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AHSWB29",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKLW463",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKLW495",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKLW877",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKQW030",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKSW051",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKSW433",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKSW600",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKSW609",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ],
+            [
+              "",
+              "AKYW258",
+              "",
+              "",
+              "",
+              "其他",
+              "无",
+              "其它",
+              "其它",
+              "3"
+            ]
+          ]
+        },
+        {
+          "title": "file_id 无法回链表1样本",
+          "description": "抽样展示表2里在表1找不到对应 file_id 的记录。",
+          "columns": [
+            "file_id",
+            "spu",
+            "product_name",
+            "big_cate",
+            "mid_cate",
+            "sub_track"
+          ],
+          "rows": []
+        }
+      ]
+    },
+    {
+      "table_id": "04",
+      "plan_name": "04、123的关联表",
+      "target_table": "data_dws.dws_platform_file_resource_label_id",
+      "logic_desc": "规划上属于 1/2/3 的关联桥接表。",
+      "code_excerpt": "insert overwrite table data_dws.dws_platform_file_resource_label_id  \n\nselect \n\n\t\t\n\n            t2.file_type,   --文件类型\n\n\t\t    t2.file_id,     --文件Id\n\n\t\t    t2.platform,    --平台\n\n\t\t    t2.brand,       --品牌\n\n\t\t    t2.create_time, --创建时间\n\n\t\t    t2.full_path,   --主路径\n\n\t\t    t2.concatenated_path,  -- 拼接路径\n\n\t\t    t2.video_duration_type,  --视频时长类型\n\n\t\t    t2.video_wide_range,     --视频宽幅度\n\n\t\t    t2.picture_size,         --图片大小\n\n\t\t    t2.picture_wear,         --穿搭图\n\n\t\t    t2.spu                    --SPU\n\n\t\t\t\t, t2.product_name              --产品名称\n\n\t\t\t\t, t2.big_cate  --品牌大类\n\n\t\t        , t2.mid_cate   --中类规整\n\n\t\t        , case when t2.sub_track is null or t2.sub_track = '' \n\n\t\t                   then  '其他' else t2.sub_track end sub_track  --细分赛道                                     \n\n\t\t\t    ,t2.gender                                  --性别\n\n\t\t\t    ,t2.scene       --场景 \n\n\t\t\t    ,t2.style       --风格 \n\n\t\t\t    --,t1.platform,\n\n\t\t\t\t, null as title,\n\n\t\t\t\tnull platform_source_id,    \n\n\t\t\t\tnull good_ids,\n\n\t\t\t\t-- t1.spu,\n\n\t\t\t\tnull author,\n\n\t\t\t\tnull big_tag,\n\n\t\t\t\tnull middle_tag,\n\n\t\t\t\tpublish_date,\n\n\t\t\t\tpicture_type,\n\n\t\t\t\tresolution,\n\n\t\t\t\tfile_name,\n\n\t\t\t\twidth,\n\n\t\t\t\theight\n\nfrom (\n\n        select \n\n\t\t      t1.file_type,   --文件类型\n\n\t\t    t1.file_id,     --文件Id\n\n\t\t    t1.platform,    --平台\n\n\t\t    t1.brand,       --品牌\n\n\t\t    t1.create_time, --创建时间\n\n\t\t    t1.full_path,   --主路径\n\n\t\t    t1.concatenated_path,  -- 拼接路径\n\n\t\t    t1.video_duration_type,  --视频时长类型\n\n\t\t    t1.video_wide_range,     --视频宽幅度\n\n\t\t    t1.picture_size,         --图片大小\n\n\t\t    t1.picture_wear,         --穿搭图\n\n\t\t    t1.publish_date,\n\n\t\t    t1.resolution,\n\n\t\t    t1.file_name,\n\n\t\t    t1.spu                    --SPU\n\n\t\t\t\t, t2.product_name              --产品名称\n\n\t\t\t\t, t2.big_cate  --品牌大类\n\n\t\t        , t2.mid_cate   --中类规整\n\n\t\t        , case when t2.",
+      "source_tables": [
+        "data_dwd.dwd_t_file_resource_id",
+        "data_dwd.dwd_file_label_id_spu",
+        "data_dwd.dwd_platform_source_label"
+      ],
+      "downstream_notes": [
+        "下游承接图片/视频聚合层与后续内容消费层；current-version.image-update.sql 也直接消费该表。",
+        "若表4桥接键不稳定，会直接传导到图片/视频标签结果表。"
+      ],
+      "schema_columns": [
+        "author",
+        "big_cate",
+        "big_tag",
+        "brand",
+        "concatenated_path",
+        "create_time",
+        "file_id",
+        "file_name",
+        "file_type",
+        "full_path",
+        "gender",
+        "good_ids",
+        "height",
+        "mid_cate",
+        "middle_tag",
+        "picture_size",
+        "picture_type",
+        "picture_wear",
+        "platform",
+        "platform_source_id",
+        "product_name",
+        "publish_date",
+        "resolution",
+        "scene",
+        "spu",
+        "style",
+        "sub_track",
+        "title",
+        "video_duration_type",
+        "video_wide_range",
+        "width"
+      ],
+      "row_count": 6480876,
+      "distinct_key_count": 6480876,
+      "key_definition": "当前实表近似键：(file_id, platform_source_id, spu)；规划键：file_id + platform_source_id + sku",
+      "freshness": [
+        [
+          "create_time",
+          "2012-07-02 09:52:14",
+          "2026-04-14 19:04:18"
+        ],
+        [
+          "publish_date",
+          "2023-02-02",
+          "5419-10-10"
+        ]
+      ],
+      "source_snapshots": [
+        {
+          "full_name": "data_dwd.dwd_t_file_resource_id",
+          "exists": true,
+          "record_count_hint": 6480876,
+          "column_count": 18,
+          "key_columns_present": [
+            "file_id",
+            "spu"
+          ]
+        },
+        {
+          "full_name": "data_dwd.dwd_file_label_id_spu",
+          "exists": true,
+          "record_count_hint": 6480876,
+          "column_count": 10,
+          "key_columns_present": [
+            "file_id",
+            "spu"
+          ]
+        },
+        {
+          "full_name": "data_dwd.dwd_platform_source_label",
+          "exists": true,
+          "record_count_hint": 4119,
+          "column_count": 9,
+          "key_columns_present": [
+            "platform_source_id",
+            "spu"
+          ]
+        }
+      ],
+      "field_metrics": [
+        {
+          "field_name": "file_type",
+          "present_in_schema": true,
+          "fill_count": 6480876,
+          "miss_count": 0,
+          "miss_rate_pct": 0.0,
+          "distribution": [
+            [
+              "图片",
+              "6402925"
+            ],
+            [
+              "视频",
+              "77951"
+            ]
+          ],
+          "note": ""
+        },
+        {
+          "field_name": "file_id",
+          "present_in_schema": true,
+          "fill_count": 6480357,
+          "miss_count": 519,
+          "miss_rate_pct": 0.008,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "platform_source_id",
+          "present_in_schema": true,
+          "fill_count": 0,
+          "miss_count": 6480876,
+          "miss_rate_pct": 100.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "spu",
+          "present_in_schema": true,
+          "fill_count": 6470469,
+          "miss_count": 10407,
+          "miss_rate_pct": 0.1606,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "title",
+          "present_in_schema": true,
+          "fill_count": 0,
+          "miss_count": 6480876,
+          "miss_rate_pct": 100.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "author",
+          "present_in_schema": true,
+          "fill_count": 0,
+          "miss_count": 6480876,
+          "miss_rate_pct": 100.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "big_tag",
+          "present_in_schema": true,
+          "fill_count": 0,
+          "miss_count": 6480876,
+          "miss_rate_pct": 100.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "middle_tag",
+          "present_in_schema": true,
+          "fill_count": 0,
+          "miss_count": 6480876,
+          "miss_rate_pct": 100.0,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "publish_date",
+          "present_in_schema": true,
+          "fill_count": 6473385,
+          "miss_count": 7491,
+          "miss_rate_pct": 0.1156,
+          "distribution": [],
+          "note": ""
+        },
+        {
+          "field_name": "sku",
+          "present_in_schema": false,
+          "fill_count": null,
+          "miss_count": null,
+          "miss_rate_pct": null,
+          "distribution": [],
+          "note": "来自 four_table.pdf 的核心桥接维度期望"
+        },
+        {
+          "field_name": "weight_factor",
+          "present_in_schema": false,
+          "fill_count": null,
+          "miss_count": null,
+          "miss_rate_pct": null,
+          "distribution": [],
+          "note": "来自 four_table.pdf 的核心桥接维度期望"
+        }
+      ],
+      "checks": [
+        {
+          "check_name": "桥接键唯一性",
+          "severity": "low",
+          "status": "pass",
+          "detail": "现网只能用 (file_id, platform_source_id, spu) 近似桥接键做唯一性校验，因为 sku 尚未落表。",
+          "row_count": 0,
+          "row_rate_pct": 0.0
+        },
+        {
+          "check_name": "core dim: sku 已落表",
+          "severity": "critical",
+          "status": "fail",
+          "detail": "four_table.pdf 将 sku 定义为桥接核心维度键；当前实表缺失时，配色级归因无法落地。",
+          "row_count": null,
+          "row_rate_pct": null
+        },
+        {
+          "check_name": "core dim: weight_factor 已落表",
+          "severity": "critical",
+          "status": "fail",
+          "detail": "four_table.pdf 将 weight_factor 定义为归因权重；当前实表缺失时，多商品内容无法防止双重计量。",
+          "row_count": null,
+          "row_rate_pct": null
+        },
+        {
+          "check_name": "platform_source_id 非空覆盖率",
+          "severity": "high",
+          "status": "fail",
+          "detail": "若 platform_source_id 为空，文件资产无法稳定挂到平台发布实例。",
+          "row_count": 6480876,
+          "row_rate_pct": 100.0
+        },
+        {
+          "check_name": "file_id 非空覆盖率",
+          "severity": "high",
+          "status": "fail",
+          "detail": "桥接表若 file_id 为空，将无法回溯到本地原始素材。",
+          "row_count": 519,
+          "row_rate_pct": 0.008
+        },
+        {
+          "check_name": "spu 非空覆盖率",
+          "severity": "medium",
+          "status": "fail",
+          "detail": "spu 为空会削弱款级聚合能力。",
+          "row_count": 10407,
+          "row_rate_pct": 0.1606
+        },
+        {
+          "check_name": "回链表1文件资源层",
+          "severity": "low",
+          "status": "pass",
+          "detail": "表4按规划应由表1、表2、表3桥接而来；若 file_id 找不到表1，对应资产实体不完整。",
+          "row_count": 0,
+          "row_rate_pct": 0.0
+        },
+        {
+          "check_name": "回链表2语义层",
+          "severity": "low",
+          "status": "pass",
+          "detail": "表4若无法回链表2，则 file_id / spu 桥接后的商品语义不完整。",
+          "row_count": 0,
+          "row_rate_pct": 0.0
+        },
+        {
+          "check_name": "回链表3平台表达层",
+          "severity": "low",
+          "status": "pass",
+          "detail": "platform_source_id 若回链不到表3，则发布实例维度未闭环。",
+          "row_count": 0,
+          "row_rate_pct": 0.0
+        }
+      ],
+      "samples": [
+        {
+          "title": "platform_source_id 为空样本",
+          "description": "抽样展示桥接表中平台素材实例缺失的记录。",
+          "columns": [
+            "file_type",
+            "file_id",
+            "platform_source_id",
+            "spu",
+            "title",
+            "publish_date",
+            "full_path"
+          ],
+          "rows": [
+            [
+              "视频",
+              "cbf3e405f394ae7fb6431ae1c1947e5e",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0871.MP4"
+            ],
+            [
+              "视频",
+              "3eec06c77fc006cb582af29d39b3c206",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0870.MP4"
+            ],
+            [
+              "视频",
+              "f1b1e31312ddf26f533bc5cc809fa24d",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0869.MP4"
+            ],
+            [
+              "视频",
+              "dfbb88df6ba3225579273d9318b1be3d",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0868.MP4"
+            ],
+            [
+              "视频",
+              "234a958a8add1144e21c44f7f1978003",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0866.MP4"
+            ],
+            [
+              "视频",
+              "d7513a9c2fce31ed1ee46aa8f2f3b28c",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0865.MP4"
+            ],
+            [
+              "视频",
+              "3f26b15ccc1e8d8b741342a4d130096c",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0864.MP4"
+            ],
+            [
+              "视频",
+              "fee4a52413b5b9220130036b77525835",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚2C0863.MP4"
+            ],
+            [
+              "视频",
+              "58fded5163892383177825c421145e33",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0929.MP4"
+            ],
+            [
+              "视频",
+              "e6be1fbe20cef1d1068b081daee18be8",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0928.MP4"
+            ],
+            [
+              "视频",
+              "1e0a2843b1ecd2da72d92239f0c7b57d",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0927.MP4"
+            ],
+            [
+              "视频",
+              "1a8a74443142d05102f246e6a3a1563a",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0924.MP4"
+            ],
+            [
+              "视频",
+              "ae522cb64892ffdebd16d3dc0b15c8ee",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0922.MP4"
+            ],
+            [
+              "视频",
+              "7cdb60758e4626290ec5440b88541a36",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0921.MP4"
+            ],
+            [
+              "视频",
+              "1a75a401aeadce5c149da4a9050887d5",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-2上脚1C0920.MP4"
+            ],
+            [
+              "视频",
+              "9216ff42b0d2b2e572b5161a51c7eeea",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0884.MP4"
+            ],
+            [
+              "视频",
+              "d43166689fdc9331d13a1be97735eb46",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0882.MP4"
+            ],
+            [
+              "视频",
+              "a34aea369272028af9e487ad4d150041",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0881.MP4"
+            ],
+            [
+              "视频",
+              "96a54a1b48e0865e28ad2cc8ae4af234",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0880.MP4"
+            ],
+            [
+              "视频",
+              "03680b34e520c89d5471339aef7c49a1",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0878.MP4"
+            ],
+            [
+              "视频",
+              "de36fb1fd6886a88460d5f532ad3a70c",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0877.MP4"
+            ],
+            [
+              "视频",
+              "f274b03e66882ee638137d0b12420cb6",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0876.MP4"
+            ],
+            [
+              "视频",
+              "603d86a408c9e6320415b2da6ff18f7e",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚2C0874.MP4"
+            ],
+            [
+              "视频",
+              "57ee72afc4a645fe4fd28cedc75ad427",
+              "",
+              "AGLW196",
+              "",
+              "",
+              "192.168.2.136media代运营中心素材库aaa素材中台素材2026年4月20260413AGLW196-1上脚1C0893.MP4"
+            ]
+          ]
+        },
+        {
+          "title": "无法回链表2的桥接样本",
+          "description": "抽样展示桥接表中 file_id + spu 在表2缺失的记录。",
+          "columns": [
+            "file_type",
+            "file_id",
+            "platform_source_id",
+            "spu",
+            "title",
+            "full_path"
+          ],
+          "rows": []
+        },
+        {
+          "title": "file_id 为空样本",
+          "description": "抽样展示桥接表中 file_id 为空的记录。",
+          "columns": [
+            "file_type",
+            "file_id",
+            "platform_source_id",
+            "spu",
+            "title",
+            "full_path",
+            "publish_date"
+          ],
+          "rows": [
+            [
+              "图片",
+              "",
+              "",
+              "AKSW423",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AKSW423-1AKSW423-1_02.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AUDW041",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AUDW041-2AUDW041-2_04.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ABDW189",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414ABDW189-1ABDW189-1_01.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AKSW216",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AKSW216-2AKSW216-2_04.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ABSW257",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414ABSW257-1ABSW257-1_02.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AKLW103",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AKLW103-1AKLW103-1_02.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AFDW998",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AFDW998-1AFDW998-1_06.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AAYV821",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AAYV821-1AAYV821-1_03.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AAYV835",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AAYV835-1AAYV835-1_02.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AAYV761",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AAYV761-1AAYV761-1_03.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AAYV817",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AAYV817-1AAYV817-1_03.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ABPW013",
+              "",
+              "h3c.skomart.netmedia李宁素材库22026ABPW013主图ABPW013-SKU搜索主图-assetsSKU搜索主图ABPW013-3.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ATSWA93",
+              "",
+              "h3c.skomart.netmedia代运营中心李宁组运营共享李宁图片小图20264月0414-2款（集团供图）ATSWA93-1ATSWA93-1-MXK-WHITE-6(800).png",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AWDW510",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AWDW510-1AWDW510-1_03.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AWDV861",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AWDV861-3AWDV861-3_06.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AULW023",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AULW023-1AULW023-1_03.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AUDW045",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AUDW045-1AUDW045-1_06.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ATSW081",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414ATSW081-1ATSW081-1_07.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ATSW197",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414ATSW197-5ATSW197-5_06.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ATSW035",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414ATSW035-3ATSW035-3_11.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "ATSW034",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414ATSW034-4ATSW034-4_07.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AKYW158",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AKYW158-2AKYW158-2_05.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AKSW139",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AKSW139-1AKSW139-1_05.jpg",
+              "2026-04-14"
+            ],
+            [
+              "图片",
+              "",
+              "",
+              "AKSW009",
+              "",
+              "h3c.skomart.netmedia商品图片存储详情页内容包装详情页重点包装商品设计爆款切片O2O20260414AKSW009-5AKSW009-5_04.jpg",
+              "2026-04-14"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}
